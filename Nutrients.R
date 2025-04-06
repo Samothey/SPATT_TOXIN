@@ -11,7 +11,7 @@ install.packages("remotes")
 library(tidyverse)
 library(lubridate)
 library(readr)
-
+library(readxl)
 # === 1. Load data ===
 nutrients <- read_csv("~/Desktop/spatt_toxin_april/LakeData_Brooks2009-2024_Rstudio.csv")
 
@@ -162,7 +162,7 @@ library(tidyverse)
 library(lubridate)
 
 # === 1. Load and clean data ===
-nutrients <- read_csv("LakeData_Brooks2009-2024_Rstudio.csv")
+nutrients <- read_csv("~/Desktop/spatt_toxin_april/LakeData_Brooks2009-2024_Rstudio.csv")
 
 nutrients_clean <- nutrients %>%
   mutate(
@@ -214,6 +214,72 @@ ggplot(combined_corrected, aes(x = month, y = Value, color = Variable, group = V
   labs(
     title = "Nutrient and Chlorophyll-a Trends by Month",
     x = "Month", y = "Concentration", color = "Variable"
+  ) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+
+### ortho p and TP###
+
+library(tidyverse)
+library(lubridate)
+
+# === 1. Load data ===
+nutrients <- read_csv("~/Desktop/spatt_toxin_april/LakeData_Brooks2009-2024_Rstudio.csv")
+
+# === 2. Filter for 2024, deepest site only ===
+nutrients_clean <- nutrients %>%
+  mutate(
+    date = mdy(date),
+    site = tolower(site),
+    type = tolower(type)
+  ) %>%
+  filter(
+    year(date) == 2024,
+    str_detect(site, "deepest"),
+    type %in% c("bottom", "surface")
+  )
+
+# === 3. Reshape to long format: OrthoP + TP ===
+phosphorus_long <- nutrients_clean %>%
+  select(date, month, waterbody, type, orthoP, TP) %>%
+  pivot_longer(cols = c(orthoP, TP),
+               names_to = "Variable", values_to = "Value")
+
+# === 4. Order months ===
+phosphorus_long$month <- factor(phosphorus_long$month,
+                                levels = c("January", "February", "March", "April", "May", "June",
+                                           "July", "August", "September", "October", "November", "December"),
+                                ordered = TRUE)
+## ortho P ##
+ggplot(phosphorus_long %>% filter(Variable == "orthoP"),
+       aes(x = month, y = Value, color = type, group = type)) +
+  geom_line(linewidth = 1.2) +
+  geom_point(size = 3) +
+  facet_wrap(~ waterbody, scales = "free_y") +
+  scale_color_manual(values = c("bottom" = "#1f78b4", "surface" = "#33a02c"),
+                     labels = c("bottom" = "Bottom", "surface" = "Surface")) +
+  labs(
+    title = "Orthophosphate Concentrations by Depth (2024, Deepest Sites)",
+    x = "Month", y = "Concentration (mg/L)", color = "Sample Type"
+  ) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+
+#####TP####
+ggplot(phosphorus_long %>% filter(Variable == "TP"),
+       aes(x = month, y = Value, color = type, group = type)) +
+  geom_line(linewidth = 1.2) +
+  geom_point(size = 3) +
+  facet_wrap(~ waterbody, scales = "free_y") +
+  scale_color_manual(values = c("bottom" = "#e31a1c", "surface" = "#33a02c"),
+                     labels = c("bottom" = "Bottom", "surface" = "Surface")) +
+  labs(
+    title = "Total Phosphorus Concentrations by Depth (2024, Deepest Sites)",
+    x = "Month", y = "Concentration (mg/L)", color = "Sample Type"
   ) +
   theme_bw() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
