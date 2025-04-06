@@ -1,17 +1,18 @@
+# Load packages
 library(readxl)
 library(tidyverse)
-library(ggplot2)
 library(lubridate)
-library(dplyr)
 library(stringr)
 
-##First Round of SPATT DATA BROOKS 2024####
-########Reading in data and graphs########
-
-# Read Excel file
+# === 1. Load SPATT Excel file ===
 spatt_data <- read_excel("~/Desktop/spatt_toxin_april/WY0_SP_2025-2.xlsx")
 
-# Create ng/g and µg/g columns
+
+# === 3. Remove Boysen sites ===
+spatt_data <- spatt_data %>%
+  filter(!str_detect(Site_name, regex("Boysen|BO_|BBR", ignore_case = TRUE)))
+
+# === 4. Calculate toxin loads ===
 toxins <- c("LA", "LR", "YR", "dmLR", "LY", "LF", "NOD", "RR", "WR")
 
 for (toxin in toxins) {
@@ -22,11 +23,7 @@ for (toxin in toxins) {
   spatt_data[[ug_g_col]] <- spatt_data[[ng_g_col]] / 1000
 }
 
-# Filter out BO_BBR sites
-spatt_data <- spatt_data %>%
-  filter(!str_detect(Site_name, "Boysen"))
-
-# Pivot to long format and clean up toxin names
+# === 5. Pivot longer + clean ===
 spatt_long <- spatt_data %>%
   pivot_longer(
     cols = ends_with("_ng_g"),
@@ -34,51 +31,71 @@ spatt_long <- spatt_data %>%
     values_to = "ng_per_g"
   ) %>%
   mutate(
-    toxin = str_replace(toxin, "_ng_g", ""),
+    toxin = str_remove(toxin, "_ng_g"),
     Date = as.Date(Date),
-    month = format(Date, "%b"),
-    month = factor(month, levels = c("Jul", "Aug", "Sep", "Oct"))
+    label_date = format(Date, "%b %d")  # for axis labels (e.g., "Jul 31")
   )
 
-# Plot: stacked bar of total toxin ng/g per site per month W/ Free-y
-ggplot(spatt_long, aes(x = month, y = ng_per_g, fill = toxin)) +
+# === 6. Plot with x = Date (for correct order), but readable labels ===
+ggplot(spatt_long, aes(x = Date, y = ng_per_g, fill = toxin)) +
   geom_bar(stat = "identity", position = "stack") +
-  facet_wrap(~Site_name, scales = "free_y") +
+  facet_wrap(~ Site_name, scales = "free_y") +
+  scale_x_date(date_labels = "%b %d", breaks = unique(spatt_long$Date)) +
+  scale_fill_brewer(palette = "Set1") +
   labs(
-    title = "Monthly Toxin Load per Gram of Resin by Site",
-    x = "Month",
+    title = "SPATT Toxin Load by Site and Date",
+    x = "Sampling Date",
     y = "Toxin Load (ng/g)",
     fill = "Toxin"
   ) +
-  scale_fill_brewer(palette = "Set1") +
   theme_bw() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
-# Plot: stacked bar of total toxin ng/g per site per month W/oFree-y
-ggplot(spatt_long, aes(x = month, y = ng_per_g, fill = toxin)) +
-  geom_bar(stat = "identity", position = "stack") +
-  facet_wrap(~Site_name) +
-  labs(
-    title = "Monthly Toxin Load per Gram of Resin by Site",
-    x = "Month",
-    y = "Toxin Load (ng/g)",
-    fill = "Toxin"
-  ) +
-  scale_fill_brewer(palette = "Set1") +
-  theme_bw() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
-##heatmap
+### heat map####
 
-# Step 1: Create toxin_color column (if not already present)
-spatt_long <- spatt_long %>%
-  mutate(toxin_color = ifelse(ng_per_g > 0, toxin, NA))
+# Load packages
+library(readxl)
+library(tidyverse)
+library(lubridate)
+library(stringr)
 
-# Step 2: Filter for detected toxins only
-detected_only <- spatt_long %>%
-  filter(!is.na(toxin_color))
+# === 1. Load SPATT Excel file ===
+spatt_data <- read_excel("~/Desktop/spatt_toxin_april/WY0_SP_2025-2.xlsx")
 
-# Step 3: Define custom colors (run this before plotting!)
+# === 2. Remove Boysen sites ===
+spatt_data <- spatt_data %>%
+  filter(!str_detect(Site_name, regex("Boysen|BO_|BBR", ignore_case = TRUE)))
+
+# === 3. Calculate toxin loads ===
+toxins <- c("LA", "LR", "YR", "dmLR", "LY", "LF", "NOD", "RR", "WR")
+
+for (toxin in toxins) {
+  ng_g_col <- paste0(toxin, "_ng_g")
+  ug_g_col <- paste0(toxin, "_ug_g")
+  
+  spatt_data[[ng_g_col]] <- spatt_data[[toxin]] / 3
+  spatt_data[[ug_g_col]] <- spatt_data[[ng_g_col]] / 1000
+}
+
+# === 4. Pivot longer ===
+spatt_long <- spatt_data %>%
+  pivot_longer(
+    cols = ends_with("_ng_g"),
+    names_to = "toxin",
+    values_to = "ng_per_g"
+  ) %>%
+  mutate(
+    toxin = str_remove(toxin, "_ng_g"),
+    Date = as.Date(Date),
+    label_date = format(Date, "%b %d")
+  )
+
+# === 5. Create toxin_color only if ng_per_g > 0 (detected)
+spatt_detected <- spatt_long %>%
+  mutate(toxin_detected = ifelse(ng_per_g > 0, toxin, NA))
+
+# === 6. Optional: Custom toxin color palette
 custom_toxin_colors <- c(
   "LA"   = "#1f77b4",
   "LR"   = "#ff7f0e",
@@ -91,32 +108,21 @@ custom_toxin_colors <- c(
   "WR"   = "#17becf"
 )
 
-# Step 4: Convert to factor for color mapping
-detected_only$toxin_color <- factor(detected_only$toxin_color, levels = names(custom_toxin_colors))
+# Ensure toxin levels match the palette order
+spatt_detected$toxin_detected <- factor(spatt_detected$toxin_detected, levels = names(custom_toxin_colors))
 
-# Step 5: Plot!
-ggplot(detected_only, aes(x = month, y = Site_name, fill = toxin_color)) +
+# === 7. Heatmap Plot ===
+ggplot(spatt_detected %>% filter(!is.na(toxin_detected)),
+       aes(x = Date, y = Site_name, fill = toxin_detected)) +
   geom_tile(color = "white", linewidth = 0.5) +
   scale_fill_manual(values = custom_toxin_colors, na.value = "white") +
+  scale_x_date(date_labels = "%b %d", breaks = unique(spatt_detected$Date)) +
   labs(
-    title = "Toxin Detection by Site and Month",
-    x = "Month",
+    title = "Toxin Detection by Site and Sampling Date",
+    x = "Sampling Date",
     y = "Site",
-    fill = "Toxin"
+    fill = "Toxin Detected"
   ) +
   theme_bw() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
-# Plot: stacked bar of total toxin ng/g per site per month W/oFree-y
-ggplot(spatt_long, aes(x = month, y = ng_per_g, fill = toxin)) +
-  geom_bar(stat = "identity", position = "stack") +
-  facet_wrap(~Site_name) +
-  labs(
-    title = "Monthly Toxin Load per Gram of Resin by Site",
-    x = "Month",
-    y = "Toxin Load (ng/g)",
-    fill = "Toxin"
-  ) +
-  scale_fill_brewer(palette = "Set2") +
-  theme_bw() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))
